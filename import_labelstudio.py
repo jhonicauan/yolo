@@ -144,7 +144,7 @@ def main():
         names = [line.strip() for line in classes_txt.read_text(encoding="utf-8").splitlines() if line.strip()]
         yaml_path = dataset / "data.yaml"
         lines = [
-            "path: ./" + dataset.name,
+            "path: " + str(dataset.resolve()).replace("\\", "/"),
             "",
             "train: images/train",
             "val: images/val",
