@@ -220,9 +220,9 @@ Flag `--save-crops` salva **todo crop de todo frame** (enche disco rápido; pref
 ### Tracking + contagem
 
 ```bash
-python src/track_camera.py
-python src/track_camera.py --source video.mp4 --save saida.mp4
-python src/track_camera.py --tracker botsort
+python src/track_camera.py --device intel
+python src/track_camera.py --device intel --source video.mp4 --save saida.mp4
+python src/track_camera.py --device intel --tracker botsort
 ```
 
 ### Interpretação do score

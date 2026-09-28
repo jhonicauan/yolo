@@ -14,7 +14,7 @@ import cv2
 from ultralytics import YOLO
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from pipeline import YOLO_WEIGHTS, CONFIGS_DIR
+from pipeline import YOLO_WEIGHTS, CONFIGS_DIR, resolve_devices
 
 
 def main():
@@ -28,13 +28,26 @@ def main():
     parser.add_argument("--persist-frames", type=int, default=150)
     parser.add_argument("--cam-w", type=int, default=1280)
     parser.add_argument("--cam-h", type=int, default=720)
+    parser.add_argument("--view-w", type=int, default=1600,
+                        help="Largura da janela (px). 0 = tela cheia.")
+    parser.add_argument("--view-h", type=int, default=900,
+                        help="Altura da janela (px). 0 = tela cheia.")
+    parser.add_argument(
+        "--device", type=str, default="cpu",
+        choices=["cpu", "intel", "intel:gpu", "intel:npu", "nvidia", "cuda"],
+        help="Onde rodar o YOLO. 'intel' exige modelo exportado com src/export_openvino.py.",
+    )
     args = parser.parse_args()
 
-    tracker_yaml = CONFIGS_DIR / f"{args.tracker}.yaml"
-    print(f"Pesos  : {args.weights}")
-    print(f"Tracker: {tracker_yaml}")
+    yolo_device, _ = resolve_devices(args.device)
 
-    model = YOLO(args.weights)
+    tracker_yaml = CONFIGS_DIR / f"{args.tracker}.yaml"
+    using_ov = Path(args.weights).name.endswith("_openvino_model")
+    print(f"Pesos      : {args.weights}  {'[OpenVINO]' if using_ov else '[PyTorch]'}")
+    print(f"YOLO device: {yolo_device}")
+    print(f"Tracker    : {tracker_yaml}")
+
+    model = YOLO(args.weights, task="obb")
     src = args.source
     try:
         src = int(src)
@@ -57,6 +70,10 @@ def main():
         writer = cv2.VideoWriter(args.save, fourcc, fps, (args.cam_w, args.cam_h))
 
     cv2.namedWindow("Track", cv2.WINDOW_NORMAL)
+    if args.view_w == 0 or args.view_h == 0:
+        cv2.setWindowProperty("Track", cv2.WND_PROP_FULLSCREEN, cv2.WINDOW_FULLSCREEN)
+    else:
+        cv2.resizeWindow("Track", args.view_w, args.view_h)
     seen, finished, last_seen = set(), set(), {}
     frame_idx = 0
     print("Pressione 'q' pra sair.")
@@ -67,7 +84,8 @@ def main():
                 break
             frame_idx += 1
             results = model.track(source=frame, conf=args.conf, imgsz=args.imgsz,
-                                  tracker=str(tracker_yaml), persist=True, verbose=False)
+                                  tracker=str(tracker_yaml), persist=True,
+                                  device=yolo_device, verbose=False)
             annotated = results[0].plot()
             current = set()
             obb = results[0].obb
