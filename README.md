@@ -34,10 +34,13 @@ Modelos treinados prontos em `models/`. Não precisa treinar pra usar.
     ├── pipeline.py         # Utilitários (SAM, warp, caminhos)
     ├── train_yolo.py       # Treinar YOLO-OBB
     ├── train_anomalib.py   # Treinar EfficientAd
-    ├── predict_image.py    # YOLO em imagem/pasta/vídeo
-    ├── predict_camera.py   # YOLO ao vivo (webcam)
-    ├── track_camera.py     # YOLO + tracker + contagem
-    ├── predict_anomaly.py  # Pipeline completa (imagem -> score de defeito)
+    ├── predict_image.py         # YOLO em imagem/pasta/vídeo
+    ├── predict_camera.py        # YOLO ao vivo (webcam)
+    ├── predict_crop.py          # YOLO + warp em imagem -> salva crops isolados
+    ├── predict_crop_camera.py   # YOLO + warp ao vivo (mosaico de crops)
+    ├── track_camera.py          # YOLO + tracker + contagem
+    ├── predict_anomaly.py       # Pipeline completa (imagem -> score de defeito)
+    ├── export_openvino.py       # Exporta YOLO pra OpenVINO (iGPU Intel)
     └── data_prep/
         ├── import_labelstudio.py    # Importa export do Label Studio
         ├── extract_annotated.py     # Extrai imagens anotadas do zip
@@ -187,6 +190,32 @@ python src/predict_image.py video.mp4 --conf 0.6
 python src/predict_camera.py
 python src/predict_camera.py --sam --sam-mode quad
 ```
+
+### Extrair crops isolados (etiquetas planificadas)
+
+Detecta as etiquetas, roda perspective warp e salva cada uma como imagem retangular endireitada. **Sem análise de anomalia.**
+
+**Imagem estática:**
+```bash
+python src/predict_crop.py samples/errado.jpeg --device intel --show
+python src/predict_crop.py samples/errado.jpeg --device intel --sam --show
+```
+
+Saídas em `runs/crops/`:
+- `<nome>__annotated.jpg` — imagem original com as caixas desenhadas
+- `<nome>__crop0.png`, `__crop1.png`, ... — cada etiqueta isolada
+
+**Câmera ao vivo:**
+```bash
+python src/predict_crop_camera.py --device intel
+python src/predict_crop_camera.py --device intel --sam
+```
+
+Abre duas janelas: a câmera anotada + um mosaico com todos os crops planificados em tempo real. Teclas:
+- `q` sair
+- `s` salvar o frame atual + todos os crops daquele instante em `runs/crops_live/`
+
+Flag `--save-crops` salva **todo crop de todo frame** (enche disco rápido; prefira `s`).
 
 ### Tracking + contagem
 
