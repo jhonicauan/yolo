@@ -1,0 +1,8 @@
+# ByteTrack customizado — buffer longo + tolerância maior pra movimento rápido
+tracker_type: bytetrack
+track_high_thresh: 0.5
+track_low_thresh: 0.1
+new_track_thresh: 0.6
+track_buffer: 300          # 10s de tolerância pra sumir/reaparecer
+match_thresh: 0.95         # padrão 0.8 -> 0.95: aceita bboxes que quase não se sobrepõem
+fuse_score: True

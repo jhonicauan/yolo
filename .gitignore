@@ -1,0 +1,35 @@
+# Datasets e artefatos de treino (grandes, não vão pro Git)
+raw_dataset/
+dataset/
+crops_dataset/
+etiquetas/
+*.zip
+
+# Saídas de treino/inferência
+runs/
+results/
+datasets/          # cache do imagenette do anomalib (~1.5 GB)
+
+# Pesos base baixados durante o treino (redownload automático)
+yolo*.pt
+!models/yolo_obb.pt
+sam*.pt
+!models/mobile_sam.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+*.egg-info/
+build/
+dist/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# OS
+.DS_Store
+Thumbs.db

@@ -1,8 +1,0 @@
-path: E:/yolo/bottledataset
-
-train: images/train
-val: images/val
-test: images/test
-
-names:
-  0: bottle

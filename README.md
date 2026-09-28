@@ -1,215 +1,217 @@
-# Scripts do projeto
+# Detecção de Etiquetas + Análise de Defeitos
 
-Pipeline focado em detecção de garrafas com **YOLO-OBB** (oriented bounding boxes).
+Pipeline completa pra detectar etiquetas em imagens/vídeo, planificá-las e classificar como boas ou defeituosas.
 
-Todos os scripts rodam a partir de `E:\yolo` no ambiente conda `yolo`.
+**Estágios:**
 
-## Índice
+1. **YOLO-OBB** detecta a etiqueta com bounding box rotacionada.
+2. **SAM** (Segment Anything) refina a borda em pixel-perfect.
+3. **Perspective warp** planifica a etiqueta como se tivesse sido escaneada frontalmente.
+4. **EfficientAd (anomalib)** classifica o crop como normal ou anômalo, com score de 0 a 100 %.
 
-- [`import_labelstudio.py`](#import_labelstudiopy) — importar export do Label Studio e organizar em train/val/test
-- [`train_obb.py`](#train_obbpy) — treinar YOLO-OBB em um dataset
-- [`predict_obb.py`](#predict_obbpy) — testar em imagem/pasta/vídeo
-- [`predict_camera_obb.py`](#predict_camera_obbpy) — testar em tempo real com webcam
-- [`track_camera_obb.py`](#track_camera_obbpy) — tracking OBB em tempo real com contagem
-- [`bytetrack_custom.yaml`](#bytetrack_customyaml) — config do tracker (persistência de ID)
+Modelos treinados prontos em `models/`. Não precisa treinar pra usar.
 
 ---
 
-## `import_labelstudio.py`
+## Estrutura
 
-Importa um export do Label Studio (**YOLOv8 OBB with Images**, `.zip`) e distribui as fotos em `train/val/test`, tratando corretamente imagens de background.
-
-**Uso simples:**
-```bash
-python import_labelstudio.py export.zip --dataset bottledata_obb --clean
 ```
-
-**Opções:**
-| Flag | Padrão | Descrição |
-|---|---|---|
-| `zip` | — | Caminho do export do Label Studio |
-| `--dataset` | `my_dataset` | Pasta destino |
-| `--train` | `0.7` | Proporção de treino |
-| `--val` | `0.2` | Proporção de validação |
-| `--test` | `0.1` | Proporção de teste |
-| `--seed` | `42` | Semente da divisão |
-| `--prefix` | `ls_` | Prefixo dos arquivos novos |
-| `--clean` | off | Limpa os splits antes de importar |
-
-**O que faz:**
-1. Extrai o zip.
-2. Separa imagens anotadas de background (`.txt` vazio ou ausente).
-3. Distribui cada grupo proporcionalmente entre train/val/test.
-4. Cria `.txt` vazio pras imagens de background (formato correto YOLO).
-5. Atualiza `data.yaml` com as classes do `classes.txt` do export e caminho absoluto do dataset.
-6. Apaga caches (`.cache`) antigos.
-
-**No Label Studio, ao exportar escolha:** `YOLOv8 OBB with Images` (é o formato certo pro OBB).
-
----
-
-## `train_obb.py`
-
-Treina YOLO-OBB (bboxes rotacionadas).
-
-**Uso simples:**
-```bash
-python train_obb.py bottledata_obb
-```
-
-Ou passando o `data.yaml` direto:
-```bash
-python train_obb.py bottledata_obb/data.yaml
-```
-
-**Opções:**
-| Flag | Padrão | Descrição |
-|---|---|---|
-| `dataset` | `bottledata_obb` | Pasta do dataset ou `data.yaml` |
-| `--model` | `yolo26n-obb.pt` | Modelo base ou .pt pra fine-tuning |
-| `--epochs` | `100` | Número de épocas |
-| `--imgsz` | `640` | Tamanho da imagem |
-| `--batch` | `16` | Tamanho do batch |
-| `--workers` | `4` | Workers do dataloader |
-| `--patience` | `0` | Early stopping (0 = desligado) |
-| `--name` | `obb-<dataset>` | Nome da run |
-| `--device` | auto | `cpu`, `0`, `0,1`… |
-
-**Exemplos:**
-```bash
-python train_obb.py bottledata_obb --epochs 50 --batch 8
-python train_obb.py bottledata_obb --model yolo26s-obb.pt
-python train_obb.py bottledata_obb --model runs/obb/obb-bottledata_obb/weights/best.pt   # fine-tuning
-python train_obb.py bottledata_obb --device cpu
-```
-
-**Saída:** pesos em `runs/obb/obb-<dataset>/weights/best.pt`. No final imprime o Recall médio (R).
-
----
-
-## `predict_obb.py`
-
-Predict OBB em imagem, pasta ou vídeo. Salva anotação e imprime detecções com ângulo.
-
-**Uso:**
-```bash
-python predict_obb.py foto.jpg
-python predict_obb.py foto.jpg --conf 0.7
-python predict_obb.py pasta_com_fotos
-python predict_obb.py video.mp4
-```
-
-**Opções:**
-| Flag | Padrão | Descrição |
-|---|---|---|
-| `source` | — | Imagem, pasta ou vídeo |
-| `--weights` | auto | `.pt` OBB (padrão: `best.pt` mais recente em `runs/obb/`) |
-| `--conf` | `0.50` | Confiança mínima |
-| `--imgsz` | `640` | Tamanho da imagem |
-| `--save-dir` | `runs/obb_predict` | Pasta de saída |
-
-**Saída:** imagem/vídeo anotado em `runs/obb_predict/obb/` + terminal imprime cada detecção com classe, confiança, centro, tamanho e **ângulo em graus**.
-
----
-
-## `predict_camera_obb.py`
-
-Detecção OBB em tempo real usando webcam. Pressione **`q`** pra sair.
-
-**Uso:**
-```bash
-python predict_camera_obb.py
-```
-
-**Opções:**
-| Flag | Padrão | Descrição |
-|---|---|---|
-| `--weights` | auto | `.pt` OBB (padrão: `best.pt` mais recente em `runs/obb/`) |
-| `--source` | `0` | Índice da câmera |
-| `--conf` | `0.50` | Confiança mínima |
-| `--imgsz` | `640` | Tamanho da imagem no modelo |
-| `--cam-w` | `1280` | Largura da captura da câmera |
-| `--cam-h` | `720` | Altura da captura da câmera |
-| `--window-w` | `1280` | Largura da janela de exibição |
-| `--window-h` | `720` | Altura da janela de exibição |
-
-**Exemplos:**
-```bash
-python predict_camera_obb.py --conf 0.7
-python predict_camera_obb.py --source 1
-python predict_camera_obb.py --window-w 1920 --window-h 1080
+.
+├── README.md
+├── requirements.txt
+├── .gitignore
+├── models/                 # Modelos treinados e pré-treinados
+│   ├── yolo_obb.pt         #   YOLO-OBB treinado para etiquetas
+│   ├── anomalib.ckpt       #   EfficientAd treinado para defeitos
+│   └── mobile_sam.pt       #   MobileSAM (pretrained)
+├── configs/                # Configs de tracker
+│   ├── bytetrack.yaml
+│   └── botsort.yaml
+├── samples/                # Imagens de exemplo
+│   ├── correto.jpeg
+│   └── errado.jpeg
+└── src/
+    ├── pipeline.py         # Utilitários (SAM, warp, caminhos)
+    ├── train_yolo.py       # Treinar YOLO-OBB
+    ├── train_anomalib.py   # Treinar EfficientAd
+    ├── predict_image.py    # YOLO em imagem/pasta/vídeo
+    ├── predict_camera.py   # YOLO ao vivo (webcam)
+    ├── track_camera.py     # YOLO + tracker + contagem
+    ├── predict_anomaly.py  # Pipeline completa (imagem -> score de defeito)
+    └── data_prep/
+        ├── import_labelstudio.py    # Importa export do Label Studio
+        ├── extract_annotated.py     # Extrai imagens anotadas do zip
+        ├── extract_backgrounds.py   # Extrai backgrounds do zip
+        └── prepare_anomaly_crops.py # Gera crops planificados pro anomalib
 ```
 
 ---
 
-## `track_camera_obb.py`
+## Instalação
 
-Detecção OBB **com tracking** (IDs persistentes) e contagem em tempo real. Ideal pra saber quantas garrafas passaram.
+### Requisitos
 
-**Uso:**
+- Python 3.10 ou 3.11
+- Windows / Linux / macOS
+
+### Passo 1 — instalar dependências
+
+**Com GPU (CUDA 12.1):**
 ```bash
-python track_camera_obb.py
+pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121
+pip install -r requirements.txt
 ```
 
-**Opções:**
-| Flag | Padrão | Descrição |
-|---|---|---|
-| `--weights` | auto | `.pt` OBB |
-| `--source` | `0` | Câmera (int) ou caminho de vídeo |
-| `--conf` | `0.60` | Confiança mínima |
-| `--imgsz` | `640` | Tamanho da imagem |
-| `--tracker` | `bytetrack_custom.yaml` | Config do tracker |
-| `--save` | — | Salva vídeo anotado neste caminho |
-| `--persist-frames` | `150` | Frames sem detecção pra contar como "passou" (~5s a 30fps) |
-| `--cam-w` / `--cam-h` | `1280` / `720` | Resolução da câmera |
-| `--window-w` / `--window-h` | `1280` / `720` | Tamanho da janela |
-
-**Exemplos:**
+**Sem GPU (CPU-only):**
 ```bash
-python track_camera_obb.py                                        # webcam
-python track_camera_obb.py --source video.mp4                     # vídeo
-python track_camera_obb.py --source video.mp4 --save saida.mp4    # salvando
-python track_camera_obb.py --tracker botsort.yaml                 # BoT-SORT (mais robusto)
+pip install -r requirements.txt
 ```
 
-**HUD (canto superior esquerdo, em amarelo):**
-- `Na tela` — quantas garrafas o modelo vê agora.
-- `Total vistas` — quantos IDs únicos apareceram desde o início.
-- `Passaram` — quantas apareceram e saíram (após `--persist-frames` sem redetecção).
+### Passo 2 — verificar
 
-Pressione **`q`** pra sair. No fim imprime o resumo total.
+```bash
+python -c "import torch; print('CUDA:', torch.cuda.is_available())"
+```
 
 ---
 
-## `bytetrack_custom.yaml`
+## Como usar (modelos já treinados)
 
-Config do ByteTrack customizado — é o padrão do Ultralytics com **track_buffer aumentado** (30 → 300 frames ≈ 10s), pra segurar os IDs mais tempo sem detecção e evitar que a mesma garrafa vire vários IDs.
+Todos os scripts detectam CPU/GPU automaticamente. Use `--device cpu` ou `--device cuda` pra forçar.
 
-Editar se quiser ajustar:
-- `track_buffer` — quantos frames aguenta sem detectar antes de matar o ID.
-- `new_track_thresh` — quão confiante uma detecção precisa ser pra criar ID novo.
-- `match_thresh` — tolerância pra reassociar bbox entre frames.
+### Analisar uma imagem completa (pipeline inteira)
 
-Alternativas prontas do Ultralytics:
-- `bytetrack.yaml` — padrão, mais responsivo.
-- `botsort.yaml` — mais robusto, com re-identificação, mas ~2x mais lento.
+```bash
+python src/predict_anomaly.py samples/errado.jpeg
+```
+
+Saída no terminal:
+```
+Device      : cuda
+Anomalib    : models/anomalib.ckpt
+YOLO OBB    : models/yolo_obb.pt
+Detectou 2 etiqueta(s).
+
+  crop 0:  87.42%  [ANOMALO]
+  crop 1:  12.31%  [normal]
+
+Heatmaps salvos em: runs/anomaly/
+```
+
+Cada crop gera um PNG lado-a-lado (original + heatmap) em `runs/anomaly/`.
+
+### Analisar um crop já planificado
+
+```bash
+python src/predict_anomaly.py --crop crops_dataset/test/defeito/errado__0.png
+```
+
+### Só YOLO em imagem/pasta/vídeo
+
+```bash
+python src/predict_image.py samples/errado.jpeg
+python src/predict_image.py minha_pasta/
+python src/predict_image.py video.mp4 --conf 0.6
+```
+
+### YOLO ao vivo (webcam)
+
+```bash
+python src/predict_camera.py
+python src/predict_camera.py --sam --sam-mode quad
+```
+
+### Tracking + contagem
+
+```bash
+python src/track_camera.py
+python src/track_camera.py --source video.mp4 --save saida.mp4
+python src/track_camera.py --tracker botsort
+```
+
+### Interpretação do score
+
+- **0–30 %** → provavelmente normal
+- **30–70 %** → incerto, revisar manualmente
+- **70–100 %** → provavelmente com defeito
+
+Padrão: score > 0.5 = anômalo. Aumente com `--threshold 0.7` pra reduzir falsos positivos.
 
 ---
 
-## Fluxo típico de trabalho
+## Retreinar (opcional)
 
-1. **Anotar no Label Studio** (usando **Rotated Rectangle**, `canRotate="true"` no template) → exportar como **YOLOv8 OBB with Images** → `export.zip`.
-2. **Importar e organizar:** `python import_labelstudio.py export.zip --dataset bottledata_obb --clean`
-3. **Treinar:** `python train_obb.py bottledata_obb`
-4. **Testar em imagem:** `python predict_obb.py gato.jpg`
-5. **Testar na câmera:** `python predict_camera_obb.py`
-6. **Contar garrafas passando:** `python track_camera_obb.py`
+### YOLO-OBB
 
-## Dicas gerais
+1. Anotar imagens no **Label Studio** com **Rotated Rectangle**.
+2. Exportar como **YOLOv8 OBB with Images** → `export.zip`.
+3. Importar:
+   ```bash
+   python src/data_prep/import_labelstudio.py export.zip --dataset etiquetas --clean
+   ```
+4. Treinar:
+   ```bash
+   python src/train_yolo.py etiquetas --epochs 100
+   ```
+5. Copiar melhor peso pra pasta de modelos:
+   ```bash
+   cp runs/obb/obb-etiquetas/weights/best.pt models/yolo_obb.pt
+   ```
 
-- Caminhos com espaços: sempre entre aspas duplas.
-- Todos os scripts pegam automaticamente o `best.pt` **mais recente** em `runs/obb/`. Pra forçar outro, use `--weights`.
-- Cada dataset gera uma run separada (`runs/obb/obb-<nome>/`), então treinos diferentes não se sobrescrevem.
-- Se aparecer erro CUDA / GPU: verifique com `python -c "import torch; print(torch.cuda.is_available())"`. Se `False`, reinstale PyTorch com CUDA: `pip install torch torchvision --index-url https://download.pytorch.org/whl/cu121`.
-- Pra rodar em máquina sem GPU: passe `--device cpu` no `train_obb.py`. Nos scripts de predição, dá pra setar `set CUDA_VISIBLE_DEVICES=` antes de rodar (Windows/CMD) ou `$env:CUDA_VISIBLE_DEVICES=""` (PowerShell) — cai automaticamente pra CPU.
-- Pra máquinas Intel sem GPU, exportar o modelo pra OpenVINO acelera 2-3x: `YOLO("best.pt").export(format="openvino", int8=True)` e depois usar `--weights best_openvino_model/`.
+### EfficientAd (anomalib)
+
+1. Organize as imagens brutas:
+   ```
+   raw_dataset/
+   ├── train/good/       imagens normais
+   ├── test/good/        normais de teste
+   └── test/defeito/     anômalas (opcional)
+   ```
+2. Gerar crops planificados pela pipeline YOLO + SAM:
+   ```bash
+   python src/data_prep/prepare_anomaly_crops.py --src raw_dataset --dst crops_dataset
+   ```
+3. Treinar:
+   ```bash
+   python src/train_anomalib.py --epochs 100
+   ```
+4. Copiar o checkpoint final:
+   ```bash
+   cp results/EfficientAd/etiqueta/latest/weights/lightning/model.ckpt models/anomalib.ckpt
+   ```
+
+**Observações:**
+- Primeira execução do EfficientAd baixa ~1.5 GB do imagenette (usado no penalty loss). Só uma vez.
+- EfficientAd exige `batch_size=1`. É limitação do modelo.
+- No Windows, pode ser necessário `num_workers=0` (já é o padrão).
+
+---
+
+## Uso programático
+
+```python
+import torch
+import cv2
+from anomalib.models import EfficientAd
+
+model = EfficientAd.load_from_checkpoint("models/anomalib.ckpt", map_location="cuda")
+model.eval().cuda()
+
+img = cv2.imread("meu_crop.png")
+img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+img = cv2.resize(img, (512, 512))
+t = torch.from_numpy(img).permute(2, 0, 1).float().unsqueeze(0).cuda() / 255.0
+
+with torch.no_grad():
+    out = model(t)
+
+print(f"Score: {out.pred_score.item():.3f}")
+```
+
+---
+
+## Limitações conhecidas
+
+- **Defeitos muito pequenos** (< 10 px na imagem original) ou de baixo contraste podem passar despercebidos pelo EfficientAd. Nesses casos, o ideal é usar PatchCore com features do `layer1` ou complementar com CV clássica (blob detection).
+- **Etiquetas nunca vistas** no treino do YOLO podem não ser detectadas. Basta anotar mais exemplos e retreinar.
+- **Pipeline exige** uma etiqueta razoavelmente reta na imagem (o SAM não conserta rotações extremas).
