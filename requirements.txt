@@ -8,3 +8,7 @@ Pillow>=10.0
 anomalib>=2.0
 torch>=2.1
 torchvision>=0.16
+
+# CPU acceleration (Intel)
+openvino>=2024.0
+onnx>=1.15

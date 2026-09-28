@@ -13,9 +13,41 @@ ROOT = Path(__file__).resolve().parents[1]
 MODELS_DIR = ROOT / "models"
 CONFIGS_DIR = ROOT / "configs"
 
-YOLO_WEIGHTS = MODELS_DIR / "yolo_obb.pt"
+YOLO_WEIGHTS_PT = MODELS_DIR / "yolo_obb.pt"
+YOLO_WEIGHTS_OV = MODELS_DIR / "yolo_obb_openvino_model"
 ANOMALIB_CKPT = MODELS_DIR / "anomalib.ckpt"
 SAM_WEIGHTS = MODELS_DIR / "mobile_sam.pt"
+
+
+def resolve_yolo_weights(prefer_openvino: bool = True):
+    """Prefere o modelo OpenVINO (rápido em CPU Intel) se existir; senão volta pro .pt."""
+    if prefer_openvino and YOLO_WEIGHTS_OV.exists():
+        return YOLO_WEIGHTS_OV
+    return YOLO_WEIGHTS_PT
+
+
+YOLO_WEIGHTS = resolve_yolo_weights()
+
+
+def resolve_devices(choice: str):
+    """
+    Converte 'cpu' | 'intel' | 'intel:gpu' | 'intel:npu' | 'nvidia' | 'cuda'
+    em (yolo_device, sam_device).
+
+    YOLO aceita 'cpu', 'cuda', 'intel:gpu', 'intel:npu' (OpenVINO).
+    SAM (PyTorch puro) só aceita 'cpu' ou 'cuda' — se o usuário pediu Intel,
+    o SAM cai pra 'cpu' automaticamente.
+    """
+    c = choice.lower().strip()
+    if c in ("intel", "intel:gpu"):
+        return "intel:gpu", "cpu"
+    if c == "intel:npu":
+        return "intel:npu", "cpu"
+    if c in ("nvidia", "cuda"):
+        return "cuda", "cuda"
+    if c == "cpu":
+        return "cpu", "cpu"
+    raise ValueError(f"device desconhecido: {choice}")
 
 
 class SamRefiner:
@@ -59,7 +91,8 @@ class SamRefiner:
                 source=img, bboxes=[[x1, y1, x2, y2]],
                 verbose=False, device=self.device,
             )
-        except Exception:
+        except Exception as e:
+            print(f"[SAM] falhou: {e}")
             return None
         if not results or results[0].masks is None or len(results[0].masks.data) == 0:
             return None
